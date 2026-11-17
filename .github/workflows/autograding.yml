@@ -1,0 +1,207 @@
+name: Autograding Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  run-autograding-tests:
+    name: Autograding Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: python -m pip install poetry
+
+      - name: Install project dependencies
+        run: poetry install
+
+      - name: Run tests
+        id: tests
+        run: |
+          if poetry run pytest \
+            tests/test_swearword_fixer_proficient.py \
+            tests/test_swearword_fixer_exceeds.py \
+            --junitxml=pytest-results.xml; then
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          else
+            exit_code=$?
+            echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report results
+        if: always()
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+          TEST_EXIT_CODE: ${{ steps.tests.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          expected_files = (
+              "test_swearword_fixer_proficient.py",
+              "test_swearword_fixer_exceeds.py",
+          )
+          per_file = {
+              name: {"passed": 0, "failed": 0, "skipped": 0}
+              for name in expected_files
+          }
+          failures = []
+          skipped = []
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          results_path = Path("pytest-results.xml")
+          test_run_passed = (
+              os.environ.get("TEST_OUTCOME") == "success"
+              and os.environ.get("TEST_EXIT_CODE") == "0"
+          )
+
+          if not results_path.exists():
+              summary_path.write_text(
+                  "## Autograding results\n\n"
+                  "Tests did not produce a result file. Check the earlier "
+                  "workflow steps for a setup or collection error.\n",
+                  encoding="utf-8",
+              )
+          else:
+              root = ET.parse(results_path).getroot()
+
+              for case in root.iter("testcase"):
+                  test_file = Path(case.get("file", "")).name
+                  if test_file not in per_file:
+                      module_parts = case.get("classname", "").split(".")
+                      test_file = next(
+                          (
+                              f"{part}.py"
+                              for part in reversed(module_parts)
+                              if part in {
+                                  "test_swearword_fixer_proficient",
+                                  "test_swearword_fixer_exceeds",
+                              }
+                          ),
+                          "",
+                      )
+                  if test_file not in per_file:
+                      continue
+
+                  counts = per_file[test_file]
+                  name = f"{case.get('classname', '')}::{case.get('name', '')}"
+                  failure = case.find("failure")
+                  error = case.find("error")
+                  skip = case.find("skipped")
+
+                  if failure is not None or error is not None:
+                      result = failure if failure is not None else error
+                      details = result.get("message") or (result.text or "").strip()
+                      failures.append((name, details))
+                      counts["failed"] += 1
+                  elif skip is not None:
+                      skipped.append(name)
+                      counts["skipped"] += 1
+                  else:
+                      counts["passed"] += 1
+
+              passed = sum(counts["passed"] for counts in per_file.values())
+              failed = sum(counts["failed"] for counts in per_file.values())
+              skipped_count = sum(counts["skipped"] for counts in per_file.values())
+              total = passed + failed + skipped_count
+              proficient = per_file["test_swearword_fixer_proficient.py"]
+              proficient_total = (
+                  proficient["passed"] + proficient["failed"] + proficient["skipped"]
+              )
+
+              if total > 0 and passed == 0:
+                  score = 0
+              elif proficient_total == 0:
+                  score = 0
+              elif (
+                  test_run_passed
+                  and passed == total
+                  and skipped_count == 0
+              ):
+                  score = 4
+              elif (
+                  proficient["passed"] == proficient_total
+                  and proficient["skipped"] == 0
+              ):
+                  score = 3
+              elif proficient["passed"] * 2 > proficient_total:
+                  score = 2
+              else:
+                  score = 1
+
+              all_passed = (
+                  test_run_passed
+                  and total > 0
+                  and passed == total
+                  and skipped_count == 0
+              )
+              lines = [
+                  "## Autograding results",
+                  "",
+                  "✅ All tests passed" if all_passed else "❌ Tests did not all pass",
+                  "",
+                  f"**Final score: {score} / 4**",
+                  "",
+                  "### Results by test file",
+                  "",
+                  "| Test file | Passed | Failed | Skipped |",
+                  "| --- | ---: | ---: | ---: |",
+              ]
+
+              for file_name, counts in sorted(per_file.items()):
+                  lines.append(
+                      f"| `{file_name}` | {counts['passed']} | "
+                      f"{counts['failed']} | {counts['skipped']} |"
+                  )
+
+              lines.extend(
+                  [
+                      "",
+                      f"- Total passed: {passed}",
+                      f"- Total failed: {failed}",
+                      f"- Total skipped: {skipped_count}",
+                      "",
+                      "### Rubric",
+                      "",
+                      "- 0/4: no tests pass",
+                      "- 1/4: half or fewer of the proficient tests pass",
+                      "- 2/4: more than half of the proficient tests pass",
+                      "- 3/4: all proficient tests pass",
+                      "- 4/4: all tests pass",
+                  ]
+              )
+
+              if failures:
+                  lines.extend(["", "### Failed tests"])
+                  for name, details in failures:
+                      lines.append(f"- `{name}`")
+                      if details:
+                          lines.append(f"  - {details.splitlines()[0]}")
+
+              if skipped:
+                  lines.extend(["", "### Skipped tests"])
+                  lines.extend(f"- `{name}`" for name in skipped)
+
+              if not total:
+                  lines.extend(["", "No pytest test cases were collected."])
+
+              summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Fail check when tests do not pass
+        if: always() && (steps.tests.outcome != 'success' || steps.tests.outputs.exit_code != '0')
+        run: |
+          echo "The test run did not pass. See the Autograding results above."
+          exit 1
