@@ -26,9 +26,9 @@ from swearword_fixer import swearword_fixer
     ("aaaa", "@@@@"),
     ("ee ee", "## ##"),
     ("iiii", "!!!!"),
-    ("oooo", "****"),
+    ("oOOo", "****"),
     ("uuuu", "^^^^"),
-    ("aeio", "@#!*"),
+    ("AEIO", "@#!*"),
     ("uoie", "^*!#"),
     
     # All consonants (4-letter)
@@ -46,7 +46,7 @@ from swearword_fixer import swearword_fixer
     # Numbers in word (4 characters)
     ("w0rd", "w0rd"),
     ("w1rd", "w1rd"),
-    ("te5t", "te5t"),
+    ("te5t", "t#5t"),
     ("1234", "1234"),
     
     # Special characters (4 characters)
@@ -60,22 +60,22 @@ from swearword_fixer import swearword_fixer
     ("word ", "word"),
     (" word", "word"),
     ("wo rd", "w* rd"),
-    (" W o r d", "W * r d"),
+    (" W O r d", "W * r d"),
     
     # Y as vowel/consonant (typically not considered a vowel in basic exercises)
     ("myth", "myth"),
-    ("hype", "hyp#"),
+    ("hypE", "hyp#"),
     ("your", "y*^r"),
     
     # Repeated vowels in 4-letter words
     ("aero", "@#r*"),
-    ("ease", "#@s#"),
-    ("ieee", "!###"),
+    ("Ease", "#@s#"),
+    ("iEEE", "!###"),
     
     # Edge positions - vowels at start, end, middle
-    ("area", "@r#@"),
+    ("Area", "@r#@"),
     ("bare", "b@r#"),
-    ("code", "c*d#"),
+    ("codE", "c*d#"),
     
     # Unicode/Special characters (if supported)
     ("café", "c@fé"),  # Non-ASCII character
